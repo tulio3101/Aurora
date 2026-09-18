@@ -24,6 +24,8 @@ registro y lo deja consultable.
 > **Frontera de responsabilidad:** categoría y severidad son autoridad de n8n; equipo y SLA son
 > autoridad de la API.
 
+📄 Workflow de n8n exportado: [`n8n-workflow/Aurora - Triage de Tickets.json`](n8n-workflow/Aurora%20-%20Triage%20de%20Tickets.json) — ver [detalle abajo](#-workflow-de-n8n).
+
 
 ---
 
