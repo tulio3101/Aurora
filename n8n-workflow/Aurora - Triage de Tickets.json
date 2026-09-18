@@ -1,0 +1,318 @@
+{
+  "name": "Aurora - Triage de Tickets",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      },
+      "id": "1673d623-f9b0-4c71-b87d-01b5af0de222",
+      "name": "Recibir Ticket (Email)",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        496
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0qlRpF9bKZnbIhxA",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Clasifica el siguiente ticket de soporte:\n\n{{ $json.subject ? 'Asunto: ' + $json.subject + '\\n\\n' : '' }}Cuerpo:\n{{ $json.text || $json.snippet || $json.chatInput }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Eres un clasificador experto de tickets de soporte de Aurora, un SaaS de gestión de proyectos.\n\nAnaliza el texto del ticket y determina CATEGORÍA y SEVERIDAD. Usa EXACTAMENTE una de las opciones listadas; no inventes valores.\n\nCATEGORÍAS:\n- Facturación\n- Acceso y Cuentas\n- Rendimiento\n- Integraciones\n- Datos y reportes\n- Interfaz / uso\n- Fuera de alcance (cuando no es un problema de la plataforma)\n\nSEVERIDAD:\n- Crítica: servicio caído o pérdida de datos.\n- Alta: función clave bloqueada, sin alternativa disponible.\n- Media: función degradada, o bloqueada pero con alternativa.\n- Baja: consulta, mejora o defecto menor.\n- Fuera de alcance: no es un problema de la plataforma.\n\nSi la categoría es Fuera de alcance, la severidad también debe ser Fuera de alcance.\n\nRedacta además un borrador breve (draftResponse), empático y profesional, de primera respuesta al cliente, SIN prometer tiempos específicos.\n\nDevuelve solo la estructura JSON solicitada."
+        }
+      },
+      "id": "655ff3da-7e9e-401b-9b90-c8d1f87af4c4",
+      "name": "Clasificar Ticket",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        896,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"category\": \"Acceso y Cuentas\",\n  \"severity\": \"Crítica\",\n  \"reasoning\": \"El login no carga para todo el equipo; indica servicio caído.\",\n  \"draftResponse\": \"Hola, lamentamos el inconveniente. Estamos revisando el acceso a tu cuenta y te contactaremos con una actualización.\"\n}"
+      },
+      "id": "31771a58-c159-44e6-8067-ed504c7259b8",
+      "name": "Parser JSON",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Recibir Ticket (Email)').item.json.id }}",
+        "emailType": "text",
+        "message": "=Hola,\n\nGracias por contactar al soporte de Aurora. Hemos registrado tu solicitud.\n\n• Ticket: {{ $json.id }}\n• Categoría: {{ $json.category }}\n• Severidad: {{ $json.severity }}\n• Equipo asignado: {{ $json.team }}\n• Objetivo de respuesta: {{ $json.sla.responseTarget }}\n• Objetivo de resolución: {{ $json.sla.resolutionTarget }}\n\n{{ $json.draftResponse }}\n\nSaludos,\nEquipo de Soporte Aurora",
+        "options": {}
+      },
+      "id": "573801d8-57a8-4417-868d-b2629e6f09dc",
+      "name": "Responder al Cliente",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2112,
+        400
+      ],
+      "webhookId": "d4ef2490-90b0-4120-adc5-98f733eed6ef",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0qlRpF9bKZnbIhxA",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        480,
+        720
+      ],
+      "id": "5f679fbf-fce1-4d35-a55f-079fa26001e2",
+      "name": "When chat message received",
+      "webhookId": "2434d42e-a999-428f-848a-e189056ecd1e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  let source = 'CHAT';\n  let text = '';\n\n  try {\n    const emailItem = $('Recibir Ticket (Email)').item;\n    source = 'EMAIL';\n    text = emailItem.json.text || emailItem.json.snippet || '';\n  } catch (error) {\n    const chatItem = $('When chat message received').item;\n    text = chatItem.json.chatInput || '';\n  }\n\n  const clasificacion = item.json.output;\n\n  results.push({\n    json: {\n      source,\n      text,\n      category: clasificacion.category,\n      severity: clasificacion.severity,\n      draftResponse: clasificacion.draftResponse,\n      reasoning: clasificacion.reasoning\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "641ac2ad-5faf-4c44-a68d-0e01fee2b890",
+      "name": "Preparar Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.source }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "EMAIL"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "93efdab8-3cb0-45f4-8a30-8b2f7b36ce42",
+      "name": "¿Es Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1872,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "output-field",
+              "name": "output",
+              "type": "string",
+              "value": "=Ticket registrado ✅\n\n• ID: {{ $json.id }}\n• Categoría: {{ $json.category }}\n• Severidad: {{ $json.severity }}\n• Equipo asignado: {{ $json.team }}\n• Objetivo de respuesta: {{ $json.sla.responseTarget }}\n• Objetivo de resolución: {{ $json.sla.resolutionTarget }}\n\n{{ $json.draftResponse }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a9fe9e78-afe8-45a8-a2ce-dd76113c155b",
+      "name": "Responder en Chat",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2144,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nconst teamByCategory = {\n  'Facturación': 'Finanzas',\n  'Acceso y Cuentas': 'Identity',\n  'Rendimiento': 'Plataforma',\n  'Integraciones': 'Integraciones',\n  'Datos y reportes': 'Datos',\n  'Interfaz / uso': 'Producto',\n  'Fuera de alcance': 'Ninguno (redirigir)'\n};\n\nconst slaBySeverity = {\n  'Crítica': { responseTarget: '1 hora', resolutionTarget: '4 horas', responseHours: 1, resolutionHours: 4 },\n  'Alta': { responseTarget: '4 horas', resolutionTarget: '24 horas', responseHours: 4, resolutionHours: 24 },\n  'Media': { responseTarget: '8 horas', resolutionTarget: '72 horas', responseHours: 8, resolutionHours: 72 },\n  'Baja': { responseTarget: '24 horas', resolutionTarget: '10 días hábiles', responseHours: 24, resolutionHours: 240 },\n  'Fuera de alcance': { responseTarget: 'Redirigir', resolutionTarget: 'No aplica', responseHours: null, resolutionHours: null }\n};\n\nfunction simpleId() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nfor (const item of $input.all()) {\n  const { source, text, category, severity, draftResponse } = item.json;\n\n  const team = teamByCategory[category] || 'Sin asignar';\n  const sla = slaBySeverity[severity] || slaBySeverity['Fuera de alcance'];\n\n  const now = new Date();\n  const receivedAt = now.toISOString();\n  const createdAt = new Date(now.getTime() + 500).toISOString();\n\n  const responseDeadline = sla.responseHours != null\n    ? new Date(now.getTime() + sla.responseHours * 3600000).toISOString()\n    : null;\n  const resolutionDeadline = sla.resolutionHours != null\n    ? new Date(now.getTime() + sla.resolutionHours * 3600000).toISOString()\n    : null;\n\n  results.push({\n    json: {\n      id: simpleId(),\n      source,\n      externalId: `n8n-exec-${$execution.id}`,\n      text,\n      category,\n      severity,\n      team,\n      sla: {\n        responseTarget: sla.responseTarget,\n        resolutionTarget: sla.resolutionTarget,\n        responseDeadline,\n        resolutionDeadline\n      },\n      draftResponse,\n      receivedAt,\n      createdAt,\n      simulated: true\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "a2da9c42-c1a4-439c-b29c-9c893e1bc58c",
+      "name": "Simular Registro (Mock API)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        624
+      ],
+      "notes": "MOCK temporal: el backend real de POST /api/v1/tickets aún no está listo. Este nodo simula la respuesta 201 derivando 'team' (Tabla 1) y 'sla' (Tabla 2) a partir de category/severity. Reemplazar por un nodo HTTP Request apuntando a la API real cuando esté disponible."
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        752,
+        832
+      ],
+      "id": "21ea1142-5d38-4e2f-aa7b-04dfe0fa397f",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "AhBvGkPckzzbunau",
+          "name": "Groq account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Recibir Ticket (Email)": {
+      "main": [
+        [
+          {
+            "node": "Clasificar Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser JSON": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Clasificar Ticket",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Clasificar Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar Ticket": {
+      "main": [
+        [
+          {
+            "node": "Preparar Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es Email?": {
+      "main": [
+        [
+          {
+            "node": "Responder al Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder en Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Payload": {
+      "main": [
+        [
+          {
+            "node": "Simular Registro (Mock API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simular Registro (Mock API)": {
+      "main": [
+        [
+          {
+            "node": "¿Es Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Clasificar Ticket",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "97095668-f37c-4389-8860-745040ae4bb2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "d781f6bace4dbf2d8dc099187df59c96d0b528f9391bbea7b7c0892155a7fbc1"
+  },
+  "nodeGroups": [],
+  "id": "4KBXSPIDYQfN0B6w",
+  "tags": []
+}
