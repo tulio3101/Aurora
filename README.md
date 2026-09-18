@@ -1,33 +1,33 @@
-# Aurora
+<div align="center">
 
-API de trazabilidad de triage de tickets de soporte.
+# 🎫 AuroraFlow
 
-Un flujo externo (n8n + LLM) clasifica el ticket y envía **categoría** y **severidad**.
-La API no clasifica texto: deriva de forma determinista el **equipo destino** y el **SLA**
-(incluidas las fechas límite), persiste el registro y permite consultarlo.
+![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3-brightgreen?logo=spring)
+![Maven](https://img.shields.io/badge/Maven-3.9-blue?logo=apachemaven)
+![Spring Data JPA](https://img.shields.io/badge/JPA-Hibernate-6DB33F?logo=hibernate)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Swagger](https://img.shields.io/badge/Swagger-OpenAPI_3.0-green?logo=swagger)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![n8n](https://img.shields.io/badge/n8n-Workflow_Automation-EA4AAA?logo=n8n&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
-## Stack
+</div>
 
-Java 21 · Spring Boot 3.3.5 · Spring Data JPA · PostgreSQL · MapStruct · Lombok · springdoc-openapi
+**AuroraFlow** es una API REST de trazabilidad de triage de tickets de soporte.
 
-## Estructura
+Un flujo externo en **n8n** recibe el ticket (correo o chat), lo clasifica con un **LLM** y envía a la
+API el texto, el canal, la **categoría** y la **severidad**. La API **no clasifica texto**: deriva de
+forma determinista el **equipo destino** y el **SLA** (incluidas las fechas límite), persiste el
+registro y lo deja consultable.
 
-```
-edu/eci/aurora/
-  config/           SwaggerConfig
-  controller/       TicketController
-  exception/        GlobalExceptionHandler + excepciones de dominio
-  mapper/           TicketMapper (MapStruct)
-  model/
-    dto/request/    TicketRequestDTO
-    dto/response/   TicketResponseDTO, SlaResponseDTO, TicketPageResponseDTO
-    entity/         Ticket
-    entity/enums/   Category, Severity, Team, Source
-  repository/       TicketRepository
-  service/          TicketService, SlaCalculator, SlaCalculatorImpl
-```
+> **Frontera de responsabilidad:** categoría y severidad son autoridad de n8n; equipo y SLA son
+> autoridad de la API.
 
-## Reglas de negocio
+
+---
+
+## 📋 Reglas de negocio
 
 **Categoría → equipo destino**
 
@@ -52,78 +52,56 @@ edu/eci/aurora/
 
 - `responseDeadline` = `receivedAt` + horas de respuesta.
 - `resolutionDeadline` = `receivedAt` + tiempo de resolución.
-- **Baja**: los 10 días hábiles saltan sábados y domingos (festivos fuera de alcance por ahora).
+- **Baja**: los 10 días hábiles saltan sábados y domingos (festivos aún no contemplados).
 - **Fuera de alcance**: sin fechas límite, ambos deadlines en `null`.
 
 Todas las fechas son `Instant` en UTC.
 
-## Ejecución con Docker
+---
 
-```bash
-docker compose up --build
-```
+## ⚙️ Stack
 
-Levanta PostgreSQL 16 y la API en `localhost:8080`. El servicio `app` espera a que la base
-pase su healthcheck (`pg_isready`) antes de arrancar.
+| Capa        | Tecnología                                                  | Propósito                 |
+|-------------|-------------------------------------------------------------|---------------------------|
+| Backend     | Java 21, Spring Boot 3.3, Spring Data JPA / Hibernate        | API REST y persistencia   |
+| Backend     | MapStruct, Lombok, Jakarta Validation, SpringDoc OpenAPI     | Mapeo, DTOs, documentación|
+| Backend     | JUnit 5 + Mockito                                            | Tests                     |
+| Datos       | PostgreSQL 16                                                | Almacén operacional       |
+| Automatización | n8n + Groq *(externo)*                                    | Clasificación del ticket  |
+| Infra local | Docker Compose                                               | API + base de datos       |
 
-## Ejecución local
+---
 
-Requiere JDK 21 y una base PostgreSQL.
+## 📡 Endpoints
 
-```bash
-# Variables de entorno
-export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/aurora
-export SPRING_DATASOURCE_USERNAME=aurora
-export SPRING_DATASOURCE_PASSWORD=aurora
+Inventario completo en Swagger: `/swagger-ui.html` · OpenAPI: `/v3/api-docs`.
 
-./mvnw spring-boot:run
-```
+| Método | Ruta                    | Descripción                                          |
+|--------|-------------------------|------------------------------------------------------|
+| `POST` | `/api/v1/tickets`       | Registra un ticket ya clasificado y deriva equipo y SLA |
+| `GET`  | `/api/v1/tickets/{id}`  | Recupera un ticket por su id                          |
+| `GET`  | `/api/v1/tickets`       | Histórico paginado, ordenado por `receivedAt` desc    |
 
-En PowerShell (Windows):
+Filtros del histórico: `category`, `severity`, `team`, `source`, `from`, `to`, `page`, `size`.
+Los valores fuera del contrato devuelven `400`; un id inexistente devuelve `404`.
 
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12.1"
-$env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5432/aurora"
-$env:SPRING_DATASOURCE_USERNAME = "aurora"
-$env:SPRING_DATASOURCE_PASSWORD = "aurora"
-
-.\mvnw.cmd spring-boot:run
-```
-
-Swagger UI: http://localhost:8080/swagger-ui.html
-
-## Tests
-
-```bash
-./mvnw test
-```
-
-Los tests de integración usan H2 en memoria, no requieren PostgreSQL.
-
-## Endpoints
-
-### `POST /api/v1/tickets`
+**Ejemplo**
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/tickets \
   -H "Content-Type: application/json" \
   -d '{
     "source": "EMAIL",
-    "text": "Desde esta mañana nadie de mi equipo puede iniciar sesión, la página de login se queda cargando indefinidamente",
+    "text": "Desde esta mañana nadie de mi equipo puede iniciar sesión",
     "category": "Acceso y Cuentas",
     "severity": "Crítica",
-    "receivedAt": "2026-09-18T08:00:00Z",
-    "draftResponse": "Estamos revisando el incidente de acceso"
+    "receivedAt": "2026-09-18T08:00:00Z"
   }'
 ```
 
-Respuesta `201`:
-
 ```json
 {
-  "id": "0f6a1c9e-2c1d-4f77-9f5b-3a2b7c8d9e10",
-  "source": "EMAIL",
-  "text": "Desde esta mañana nadie de mi equipo puede iniciar sesión, la página de login se queda cargando indefinidamente",
+  "id": "1142cb3b-2486-40d7-aa8a-a7cc8e7c45a0",
   "category": "Acceso y Cuentas",
   "severity": "Crítica",
   "team": "Identity",
@@ -133,37 +111,92 @@ Respuesta `201`:
     "responseDeadline": "2026-09-18T09:00:00Z",
     "resolutionDeadline": "2026-09-18T12:00:00Z"
   },
-  "draftResponse": "Estamos revisando el incidente de acceso",
   "receivedAt": "2026-09-18T08:00:00Z",
   "createdAt": "2026-09-18T08:00:05Z"
 }
 ```
 
-### `GET /api/v1/tickets/{id}`
+---
+
+## 🚀 Inicio rápido
+
+### Con Docker
 
 ```bash
-curl http://localhost:8080/api/v1/tickets/0f6a1c9e-2c1d-4f77-9f5b-3a2b7c8d9e10
+docker compose up --build
+# API en http://localhost:8080 · Swagger en /swagger-ui.html
 ```
 
-### `GET /api/v1/tickets`
+Levanta PostgreSQL 16 y la API. El servicio `app` espera a que la base pase su healthcheck
+(`pg_isready`) antes de arrancar.
 
-Filtros opcionales: `category`, `severity`, `team`, `source`, `from`, `to`, `page`, `size`.
-Devuelve una página ordenada por `receivedAt` descendente.
+### Sin Docker
+
+Requiere JDK 21 y una base PostgreSQL en ejecución.
 
 ```bash
-curl "http://localhost:8080/api/v1/tickets?team=Identity&severity=Cr%C3%ADtica&page=0&size=20"
+export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/aurora
+export SPRING_DATASOURCE_USERNAME=postgres
+export SPRING_DATASOURCE_PASSWORD=postgres
+
+./mvnw spring-boot:run
 ```
 
-## Errores
-
-Los valores fuera del contrato devuelven `400` con el mensaje de la excepción; un id inexistente
-devuelve `404`.
+### Tests
 
 ```bash
-curl -i -X POST http://localhost:8080/api/v1/tickets \
-  -H "Content-Type: application/json" \
-  -d '{"source":"EMAIL","text":"El sistema va lento","category":"Rendimiento","severity":"Urgente"}'
-
-# HTTP/1.1 400
-# Severidad inválida: 'Urgente'. Valores permitidos: Crítica, Alta, Media, Baja, Fuera de alcance
+./mvnw test
 ```
+
+Los tests usan H2 en memoria: no requieren PostgreSQL.
+
+---
+
+## 🔗 Workflow de n8n
+
+![Workflow de n8n](docs/images/workflow.png)
+
+| Nodo                          | Tipo           | Qué hace                                                   |
+|-------------------------------|----------------|------------------------------------------------------------|
+| `Recibir Ticket (Email)`      | Gmail Trigger  | Entra un ticket por correo                                  |
+| `When chat message received`  | Chat Trigger   | Entra un ticket por chat                                    |
+| `Clasificar Ticket`           | AI Agent       | Deduce categoría y severidad del texto                      |
+| `Groq Chat Model`             | Modelo         | LLM que respalda al agente                                  |
+| `Parser JSON`                 | Output Parser  | Fuerza una salida estructurada                              |
+| `Preparar Payload`            | Code           | Arma el cuerpo del `POST /api/v1/tickets`                   |
+| `Simular Registro (Mock API)` | Code           | **Simula** el registro — ver "Pendiente de conectar"        |
+| `¿Es Email?`                  | If             | Enruta la respuesta según el canal de origen                |
+| `Responder al Cliente`        | Gmail          | Responde el correo                                          |
+| `Responder en Chat`           | Chat           | Responde por chat                                           |
+
+### ⚠️ Pendiente de conectar
+
+El workflow **todavía no llama a la API real**. El nodo `Simular Registro (Mock API)` devuelve una
+respuesta simulada, así que hoy ningún ticket llega a PostgreSQL desde n8n.
+
+Para conectarlo, hay que reemplazar ese nodo por una petición HTTP:
+
+| Campo        | Valor                                                              |
+|--------------|--------------------------------------------------------------------|
+| Tipo de nodo | HTTP Request                                                       |
+| Método       | `POST`                                                             |
+| URL          | `http://<host-de-la-api>:8080/api/v1/tickets`                      |
+| Headers      | `Content-Type: application/json`                                   |
+| Body         | La salida de `Preparar Payload`                                    |
+
+El payload debe traer `source`, `text`, `category` y `severity`; `receivedAt` y `draftResponse` son
+opcionales. Los campos `team` y `sla` **no** se envían: los deriva la API y vuelven en la respuesta
+`201`, lista para redactar la contestación al cliente.
+
+---
+
+## 🙌 Equipo
+
+- Tulio Riaño Sánchez
+- Juan Sebastián Puentes Julio
+- Daniel Patiño Mejia
+- David Alejandro Patacon Henao
+
+## 📄 Licencia
+
+Distribuido bajo la **Licencia MIT** — ver [LICENSE](LICENSE).
